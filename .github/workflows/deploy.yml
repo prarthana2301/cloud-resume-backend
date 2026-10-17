@@ -1,0 +1,48 @@
+name: Test and deploy backend
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest -v
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::190855934562:role/github-actions-backend-deploy
+          aws-region: us-west-2
+
+      - name: Package function
+        run: cd src && zip -r ../function.zip .
+
+      - name: Update Lambda code
+        run: |
+          aws lambda update-function-code \
+            --function-name visitor-counter \
+            --zip-file fileb://function.zip
+
+      - name: Wait for update to finish
+        run: aws lambda wait function-updated --function-name visitor-counter
